@@ -1,0 +1,109 @@
+##########################################################################
+
+## survival analysis
+  
+  library(survival)
+  library(dplyr)
+  #library(OIsurv) # Aumatically loads KMsurv
+  library(ranger)
+  library(ggplot2)
+  library(survminer)
+
+
+#read data 
+  rawdat=read.csv("StatinDataset-Dec.2017-modified.csv",stringsAsFactors=FALSE)
+  dim(rawdat)
+
+#remove the patients with age <16 or age > 110 or sex as U
+  rawdat=rawdat[rawdat$AGE >18 & rawdat$AGE <110 & !rawdat$SEX=="U",]
+  dim(rawdat)
+
+
+#remove the patients having oA before CVD
+  dat2=rawdat[rawdat$card_OAdays >365 |is.na(rawdat$card_OAdays),]
+  dim(dat2)
+  hist(dat2$card_OAdays)
+
+#remove the patients having OA before statin
+  dat3=dat2[dat2$statin_OAdays >365 |is.na(dat2$statin_OAdays),]
+  dim(dat3)
+  hist(dat3$statin_OAdays)
+  
+  dat=dat3
+
+# define statin use as 1 and never use as 0
+  dat$statinuse=dat$STATIN
+  
+  dat[!is.na(dat$STATIN_STARTDATE),"statinuse"] <-"1"
+  dat[is.na(dat$STATIN_STARTDATE),"statinuse"] <-"0"
+  dat$statinuse=as.character(dat$statinuse)
+  table(dat$statinuse)
+ 
+# define censoring data   
+  dat$status=dat$deathYear #status for censoring or not
+  dat[!is.na(dat$OA_CODE),"status"] <-"1"   #OA
+  dat[is.na(dat$OA_CODE),"status"] <-"0"    #non-OA
+  dat$status=as.numeric(dat$status)
+  table(dat$status)
+
+# define recent statin use as 2, ever use as 1, and never use as 0
+  # dim(dat)
+  # dat$lastStatin_OAdays=as.numeric(dat$OA_StartDATE-dat$STATIN_STARTDATE2)  #card_OAdays
+  # hist(dat$lastStatin_OAdays)
+
+# OA category
+  OAdat=as.data.frame(table(dat$OA_CODE))
+  # temp=dat[dat$Card_code=="ICD-272",]
+  # dim(temp)
+  
+# split statin into different group
+  statindat=as.data.frame(table(dat$STATIN))
+  barplot((table(dat3$STATIN)))
+  
+  dat=dat[dat$STATIN %in% c("ATORVASTATIN CALCIUM","SIMVASTATIN","PRAVASTATIN SODIUM","ROSUVASTATIN CALCIUM") |is.na(dat$STATIN),]
+  dim(dat)
+  dat[is.na(dat$STATIN),"STATIN"]<-"non-user"
+  table(dat$STATIN)
+  
+  dat=dat[dat$STATIN2 %in% c("ATORVASTATIN CALCIUM","SIMVASTATIN","PRAVASTATIN SODIUM","ROSUVASTATIN CALCIUM") |is.na(dat$STATIN2),]
+  dim(dat)
+  dat[is.na(dat$STATIN2),"STATIN2"]<-"non-user"
+  table(dat$STATIN2)
+  
+  dat$status=as.numeric(dat$status)
+
+#cox regression
+  dat=dat[dat$t1>30,]
+  dat$STATIN=as.factor(dat$STATIN)
+  dat$STATIN2=as.factor(dat$STATIN2)
+  
+  dim(dat)
+  fit1 <- coxph(Surv(t1, status) ~relevel(STATIN2, ref = 2)+AGE+SEX, data = dat)
+  fit1
+  summary(fit1)
+  plot(survfit(fit1), ylim=c(0.8, 1))
+  
+  #ggsurvplot(survfit(fit1), ggtheme = theme_minimal(),data=dat)
+
+# Create the new data  
+  treat <- with(dat,
+                data.frame(statinuse = c("1", "0"), 
+                           AGE = rep(mean(AGE, na.rm = TRUE), 2),
+                           SEX = c("F", "F")
+                )
+  )
+  str(treat)
+
+  plot(survfit(fit1, newdata = treat), 
+       xscale = 365.25,
+       conf.int = TRUE,
+       xlab = "Years after diagnosis",
+       ylab = "Proportion survived",
+       col = c("red", "green"),ylim=c(0.8, 1),xlim=c(1,10))
+  
+  legend(300, 1, 
+         legend = c("non statin users", 
+                    "statin users"), 
+         lty = 1, 
+         col = c("green", "red"))
+  
