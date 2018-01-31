@@ -1,0 +1,86 @@
+######### read data ####################################
+gc()
+combDat=read.csv("Combined_Depression_XY_3groups.csv")
+dim(combDat)
+head(combDat[1:2,14119:14126])
+combDat1=combDat
+rownames(combDat1)=combDat1[,1]
+combDat2=combDat1[,-1]
+dim(combDat2)
+head(combDat2[1:2,14119:14125])
+
+################ decision tree ###########################
+library (tree)
+dat
+dat$lable=as.factor(dat$lable)
+dim(dat)
+
+#head(dat[,c(1,291630:291638)])
+
+attach(dat)
+dat=apply(dat,2,as.character)
+dat[is.na(dat)]<-"unknown"
+dat[dat %in% c("AA","CC","GG","TT")]<-"same"
+dat[!dat %in% c("AA","CC","GG","TT","0","1")]<-"SNP"
+
+
+dat=as.data.frame(dat)
+
+#build tree
+tree.wakeup = tree(lable ~. -lable, data = dat)
+summary (tree.wakeup)
+par(mfrow=c(1,1))
+plot(tree.wakeup )
+text(tree.wakeup, pretty =0, cex=.5)
+
+
+set.seed (2)
+train=sample (1: nrow(dat), 100)
+dat.test=dat [-train ,]
+High.test=lable[-train ]
+
+tree.wakeup =tree(lable ~. -lable, dat ,subset =train )
+tree.wakeup
+tree.pred=predict(tree.wakeup ,dat.test ,type="class") #the argument type="class" instructs R to return the  class prediction
+table(tree.pred, High.test)
+
+
+#prune tree
+set.seed (100)
+cv.carseats =cv.tree(tree.wakeup ,FUN=prune.misclass ) #performs cross-validation in order to determine the optimal level of tree complexity; FUN=prune.misclass  indicates that we want the classification error rate to guide the cross-validation and pruning process, the default is deviance.
+cv.carseats   #dev corresponds to the cross-validation error rate in this instance
+
+
+par(mfrow =c(1,2))
+plot(cv.carseats$size ,cv.carseats$dev ,type="b")  #plot tree sizes versus their correspongding deviations to select the optimal tree (smallest dev)
+plot(cv.carseats$k ,cv.carseats$dev ,type="b") #plot different alpha values versus the correspongding deviations of the trees built based the alpha values, to select the optimal tree (smallest dev)
+
+
+prune.carseats =prune.misclass(tree.wakeup, best =15)  #build the optimal tree select by CV; best=9 means that the number of the terminal nodes of the optimal tree is 9.
+par(mfrow=c(1,1))
+plot(prune.carseats)  #plot the optimal tree
+text(prune.carseats, pretty =0)
+
+
+#predict testing set
+tree.pred=predict(prune.carseats, dat.test, type="class")
+table(tree.pred ,High.test) #improve error rate and better intepretation
+
+
+############ random forest###########################
+
+library(randomForest)
+set.seed(1)
+
+attach(dat)
+train = sample(1:nrow(dat), nrow(dat)/2) 
+boston.test=dat[-train,"label"]
+boston.train=dat[train,"label"]
+
+bag.boston=randomForest(label ~. -label, data=dat,subset=train,
+                        importance=TRUE)
+bag.boston
+
+yhat.bag = predict(bag.boston,newdata=dat[-train,],type="class")
+table(yhat.bag ,boston.test)
+importance(bag.boston)
