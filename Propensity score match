@@ -1,0 +1,39 @@
+##########################################################################
+##load library
+
+    library(MatchIt)
+    library(pacman)
+    library(Zelig)
+    library(knitr)
+
+#read data 
+    dat=read.csv("StatinDataset-Dec.2017-filtered.csv")
+
+
+## propsenstiy score analysis
+    dat=dat[,c("status","AGE","SEX","statinuse","Card_code","Card_Startdate")]
+    dim(dat)
+    match.it <- matchit(dat$statinuse ~ AGE + SEX , data = dat, method="nearest")
+    a <- summary(match.it)
+    summary(match.it)
+    
+    kable(a$nn, digits = 2, align = 'c', 
+           caption = 'Table 2: Sample sizes')
+    
+    m.data <- match.data(match.it)
+    
+    plot(match.it,type = "hist")
+    plot(match.it,type = "jitter")
+    
+    t.test(m.data[, "AGE"] ~ m.data$statinuse)
+
+    
+    
+    # Zelig analysis
+    z.out <- zelig(status ~ AGE + SEX + statinuse + Card_code, model = "logit", data = m.data)
+    summary(z.out) 
+    
+    x.out <- setx(z.out,statinuse=0)     
+    x1.out <- setx(z.out, statinuse=1)
+    s.out <- sim(z.out, x = x.out, x1 = x1.out) 
+    summary(s.out)
