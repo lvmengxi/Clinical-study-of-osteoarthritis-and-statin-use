@@ -1,0 +1,311 @@
+################################################################################################
+##read file
+  library(openxlsx)
+  filepath="StatinDataset-Dec.2017.xlsx"
+  dat=read.xlsx(filepath,sheet=1)
+  
+  # set the right format of date
+  dat$DATEOFDEATH=as.Date(dat$DATEOFDEATH, origin = "1899-12-30")
+  dat$OA_StartDATE=as.Date(dat$OA_StartDATE, origin = "1899-12-30")
+  dat$STATIN_STARTDATE=as.Date(dat$STATIN_STARTDATE, origin = "1899-12-30")
+  dat$Card_Startdate=as.Date(dat$Card_Startdate, origin = "1899-12-30")
+  dat$STATIN_STARTDATE2=as.Date(dat$STATIN_STARTDATE2, origin = "1899-12-30")
+  
+  
+  # set new variables
+  dat$statin_OAdays=as.numeric(dat$OA_StartDATE-dat$STATIN_STARTDATE) #statin_OAdays 
+  hist(dat$statin_OAdays)
+  
+  dat$card_OAdays=as.numeric(dat$OA_StartDATE-dat$Card_Startdate)  #card_OAdays
+  hist(dat$card_OAdays)
+  
+  dat$card_deathdays=as.numeric(dat$DATEOFDEATH-dat$Card_Startdate)  #card_deathdays
+  hist(dat$card_deathdays)
+  
+  dat$deathYear=as.numeric(format(dat$DATEOFDEATH,"%Y")) #deathYear
+  hist(dat$deathYear)
+  
+  dat$lastStatin_OAdays=as.numeric(dat$OA_StartDATE-dat$STATIN_STARTDATE2)  #OA_laststatindays
+  hist(dat$lastStatin_OAdays)
+  
+  dat$statindays=as.numeric(dat$STATIN_STARTDATE2-dat$STATIN_STARTDATE)  #statin duration
+  hist(dat$statindays)
+
+  dat$status=dat$deathYear #status for censoring or not
+  dat[!is.na(dat$OA_CODE),"status"] <-"1"   #OA
+  dat[is.na(dat$OA_CODE),"status"] <-"0"    #non-OA
+  dat$status=as.numeric(dat$status)
+  table(dat$status)
+  
+  dat$statinuse=dat$STATIN  #status for statin or not
+  dat[!is.na(dat$STATIN_STARTDATE),"statinuse"] <-"1"  # statin user
+  dat[is.na(dat$STATIN_STARTDATE),"statinuse"] <-"0"  # Non statinuser
+  dat$statinuse=as.character(dat$statinuse)
+  table(dat$statinuse)
+  
+  
+  # t1: duration from CVD starting data until death, OA, or 2017-12-31 
+  for (i in (1:dim(dat)[1])){
+    #i=1
+    if (!is.na(dat[i,"card_OAdays"]) ){
+      dat[i,"t1"] <- dat[i,"card_OAdays"]
+    } else ( if(is.na(dat[i,"DATEOFDEATH"])) {
+      dat[i,"t1"] <- as.numeric(as.Date("2017-12-31")-dat[i,"Card_Startdate"])
+    }else (
+      dat[i,"t1"] <- dat[i,"card_deathdays"]
+    )
+    )
+  }
+  summary(is.na(dat$t1)) 
+  hist(dat$t1) 
+  # set zip code to numeric
+  dat$ZIP=as.numeric(dat$ZIP)
+  head(dat$ZIP)
+  head(dat$statin_OAdays)
+  
+  dim(dat)
+  write.csv(dat,"StatinDataset-Dec.2017-modified.csv")
+  
+########################################################################################
+  #read data 
+  rawdat=read.csv("StatinDataset-Dec.2017-modified.csv",stringsAsFactors=FALSE)
+  dim(rawdat)
+  
+  #remove the patients with age <16 or age > 110 or sex as U
+  rawdat=rawdat[rawdat$AGE >18 & rawdat$AGE <110 & !rawdat$SEX=="U",]
+  dim(rawdat)
+  
+  
+  #remove the patients having oA before CVD
+  dat2=rawdat[rawdat$card_OAdays >365 |is.na(rawdat$card_OAdays),]
+  dim(dat2)
+  hist(dat2$card_OAdays)
+  
+  #remove the patients having OA before statin
+  dat3=dat2[dat2$statin_OAdays >365 |is.na(dat2$statin_OAdays),]
+  dim(dat3)
+  hist(dat3$statin_OAdays)
+  
+  dat=dat3
+  write.csv(dat,"StatinDataset-Dec.2017-filtered.csv")
+  
+################################################################################################
+## Age/gender/Date of death for all CVD patients
+
+  hist(dat$AGE)
+  table(dat$AGE)
+
+  plot(dat$SEX)
+  barplot(table(dat$SEX))
+  
+  hist(dat$DATEOFDEATH)
+  table(dat$DATEOFDEATH)
+  
+## Age/gender/Date of death for all OA patients
+  
+  OAdat=dat[!is.na(dat$OA_CODE),]
+  dim(OAdat)
+    
+  hist(OAdat$AGE)
+  table(OAdat$AGE)
+  
+  plot(OAdat$SEX)
+  barplot(table(OAdat$SEX))
+  
+  hist(OAdat$deathYear)
+  table(OAdat$DATEOFDEATH)
+  
+##zip code density 
+  library(zipcode)
+  library(ggplot2)
+  library(ddply)
+  library(ggmap)
+  
+  data(zipcode)
+  dat$ZIPclean=clean.zipcodes(dat$ZIP)
+  dat = merge(dat, zipcode, by.x='ZIP', by.y='zip')
+  dat$ZIPclean
+  plot(table(dat$state))
+  plot(table(dat$city))
+  
+  #overall geomatric info
+  theme_set(theme_bw(16))
+  dev.off()
+  qmplot(longitude, latitude, data = dat,alpha = .5,
+         colour = I("darkred"), size = I(1))
+  
+  # delaware specific
+  theme_set(theme_bw(16))
+  dev.off()  
+  myMap <- get_map('delaware', zoom = 7, urlonly = F)
+  ggmap(myMap)
+  
+  ggmap(myMap)+
+    geom_point(aes(x = longitude, y = latitude), data = dat,
+               alpha = .5, color="darkred", size = 3)
+
+   sessionInfo()
+ 
+################################################################################################
+   
+## chose the proper date set for downstream analysis  
+   
+   dim(dat)
+   
+   #remove the patients having oA before CVD
+   dat2=dat[dat$card_OAdays >365 |is.na(dat$card_OAdays),]
+   dim(dat2)
+   hist(dat2$card_OAdays)
+   
+   #remove the patients having OA before statin
+   dat3=dat2[dat2$statin_OAdays >365 |is.na(dat2$statin_OAdays),]
+   dim(dat3)
+   hist(dat3$statin_OAdays)
+   
+#################################################################################################   
+## CVD/OA 
+   barplot(table(dat$Card_code))
+   dat$Card_year=as.numeric(format(as.Date(dat$Card_Startdate,origin = "1899-12-30"),"%Y"))
+   barplot(table(dat$Card_year))
+
+  #non-statin users
+   dat=dat[dat$OA_CODE=="ICD-715.96",]
+   dim(dat)
+   
+   sum(is.na(dat[,"STATIN"])) # total num of non-statin users
+   
+   print(c(
+   sum(is.na(dat[dat$Card_code=="ICD-272","STATIN"])),
+   sum(is.na(dat[dat$Card_code=="ICD-401","STATIN"])),
+   sum(is.na(dat[dat$Card_code=="ICD-413","STATIN"])),
+   sum(is.na(dat[dat$Card_code=="ICD-427","STATIN"])),
+   sum(is.na(dat[dat$Card_code=="ICD-428","STATIN"]))
+   ))
+   
+  #NON-OA 
+   print(c(
+   sum(is.na(dat[dat$Card_code=="ICD-272","OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-401","OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-413","OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-427","OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-428","OA_CODE"]))
+   ))
+   
+  #NON-OA and statin
+   sum(is.na(dat[!is.na(dat$STATIN),"OA_CODE"]))
+   
+   print(c(
+   sum(is.na(dat[dat$Card_code=="ICD-272"&!is.na(dat$STATIN),"OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-401"&!is.na(dat$STATIN),"OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-413"&!is.na(dat$STATIN),"OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-427"&!is.na(dat$STATIN),"OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-428"&!is.na(dat$STATIN),"OA_CODE"]))
+   ))
+   
+  #NON-OA and non statin user
+   sum(is.na(dat[is.na(dat$STATIN),"OA_CODE"]))
+   
+   print(c(
+   sum(is.na(dat[dat$Card_code=="ICD-272"&is.na(dat$STATIN),"OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-401"&is.na(dat$STATIN),"OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-413"&is.na(dat$STATIN),"OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-427"&is.na(dat$STATIN),"OA_CODE"])),
+   sum(is.na(dat[dat$Card_code=="ICD-428"&is.na(dat$STATIN),"OA_CODE"]))
+   ))
+
+##########################################################################
+   
+## survival analysis
+   
+   library(survival)
+   library(dplyr)
+   #library(OIsurv) # Aumatically loads KMsurv
+   #library(ranger)
+   library(ggplot2)
+   library(survminer)
+   
+
+ #read data 
+
+   rawdat=read.csv("StatinDataset-Dec.2017-modified.csv",stringsAsFactors=FALSE)
+   dim(rawdat)
+   
+   #remove the patients with age <16 or age > 110 or sex as U
+   rawdat=rawdat[rawdat$AGE >18 & rawdat$AGE <110 & !rawdat$SEX=="U",]
+   dim(rawdat)
+   
+
+   #remove the patients having oA before CVD
+   dat2=rawdat[rawdat$card_OAdays >365 |is.na(rawdat$card_OAdays),]
+   dim(dat2)
+   hist(dat2$card_OAdays)
+   
+   #remove the patients having OA before statin
+   dat3=dat2[dat2$statin_OAdays >365 |is.na(dat2$statin_OAdays),]
+   dim(dat3)
+   hist(dat3$statin_OAdays)
+   
+   dat=dat3
+   
+ # define statin use as 1 and never use as 0
+   dat$statinuse=dat$STATIN
+   
+   dat[!is.na(dat$STATIN_STARTDATE),"statinuse"] <-"1"
+   dat[is.na(dat$STATIN_STARTDATE),"statinuse"] <-"0"
+   dat$statinuse=as.character(dat$statinuse)
+   table(dat$statinuse)
+ 
+ # define recent statin use as 2, ever use as 1, and never use as 0
+   dim(dat)
+   dat$lastStatin_OAdays=as.numeric(dat$OA_StartDATE-dat$STATIN_STARTDATE2)  #card_OAdays
+   hist(dat$lastStatin_OAdays)
+   
+   
+   
+
+ # OA category
+ OAdat=as.data.frame(table(dat$OA_CODE))
+
+ 
+#cox regression
+ # temp=dat[dat$Card_code=="ICD-272",]
+ # dim(temp)
+ # split statin into different group
+   dat=dat3
+   statindat=as.data.frame(table(dat$STATIN))
+   
+   dat=dat[dat$STATIN %in% c("ATORVASTATIN CALCIUM","SIMVASTATIN","PRAVASTATIN SODIUM")]
+ 
+   
+ 
+ dim(dat)
+ dat$status=as.numeric(dat$status)
+ 
+ fit1 <- coxph(Surv(t1, status) ~statinuse+AGE+SEX, data = dat)
+ fit1
+ summary(fit1)
+ plot(survfit(fit1), ylim=c(0.0, 1))
+ #ggsurvplot(survfit(fit1), ggtheme = theme_minimal(),data=dat)
+ 
+ # Create the new data  
+ treat <- with(dat,
+                data.frame(statinuse = c("1", "0"), 
+                           AGE = rep(mean(AGE, na.rm = TRUE), 2),
+                           SEX = c("F", "F")
+                )
+ )
+ str(treat)
+
+ plot(survfit(fit1, newdata = treat), 
+      xscale = 365.25,
+      conf.int = TRUE,
+      xlab = "Years after diagnosis",
+      ylab = "Proportion survived",
+      col = c("red", "green"),ylim=c(0.8, 1),xlim=c(1,10))
+ 
+ legend(300, 1, 
+        legend = c("non statin users", 
+                   "statin users"), 
+        lty = 1, 
+        col = c("green", "red"))
+ 
